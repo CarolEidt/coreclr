@@ -2539,6 +2539,8 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
 
     // Unary operators that take and return a Vector.
     case SIMDIntrinsicCast:
+    case SIMDIntrinsicToVectorDouble:
+    case SIMDIntrinsicToVectorInt64:
         {
             op1 = impSIMDPopStack(instMethod);
             assert(op1->TypeGet() == TYP_STRUCT);
