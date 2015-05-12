@@ -6,6 +6,10 @@ include_directories("../inc")
 # Enable the following for UNIX altjit on Windows
 # add_definitions(-DALT_JIT)
 
+if(CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
+  add_definitions(-DFEATURE_SIMD -DFEATURE_AVX_SUPPORT)
+endif (CMAKE_SYSTEM_PROCESSOR STREQUAL AMD64)
+
 set( SOURCES
   alloc.cpp
   bitset.cpp
