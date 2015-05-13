@@ -419,6 +419,14 @@ CodeGen::getOpForSIMDIntrinsic(SIMDIntrinsicID intrinsicId,
             result = INS_movaps;
             break;
 
+        case SIMDIntrinsicToVectorDouble:
+            result = INS_cvtdq2pd;
+            break;
+
+        case SIMDIntrinsicToVectorInt32:
+            result = INS_cvtpd2dq;
+            break;
+    
         case SIMDIntrinsicShiftLeftInternal:
             // base type doesn't matter since the entire vector is shifted left
             result = INS_pslldq;
@@ -751,7 +759,8 @@ CodeGen::genSIMDIntrinsicInitN(GenTreeSIMD* simdNode)
 void
 CodeGen::genSIMDIntrinsicUnOp(GenTreeSIMD* simdNode)
 {
-    assert(simdNode->gtSIMDIntrinsicID == SIMDIntrinsicSqrt || simdNode->gtSIMDIntrinsicID == SIMDIntrinsicCast);
+    assert((simdNode->gtSIMDIntrinsicID == SIMDIntrinsicSqrt) || (simdNode->gtSIMDIntrinsicID == SIMDIntrinsicCast) ||
+           (simdNode->gtSIMDIntrinsicID == SIMDIntrinsicToVectorDouble) || (simdNode->gtSIMDIntrinsicID == SIMDIntrinsicToVectorInt32));
 
     GenTree* op1 = simdNode->gtGetOp1();
     var_types baseType = simdNode->gtSIMDBaseType;
@@ -2025,6 +2034,8 @@ CodeGen::genSIMDIntrinsic(GenTreeSIMD* simdNode)
 
     case SIMDIntrinsicSqrt:
     case SIMDIntrinsicCast:
+    case SIMDIntrinsicToVectorDouble:
+    case SIMDIntrinsicToVectorInt32:
         genSIMDIntrinsicUnOp(simdNode);
         break;
 

@@ -113,8 +113,8 @@ SIMD_INTRINSIC("ConditionalSelect",         false,       Select,                
 SIMD_INTRINSIC("op_Explicit",               false,       Cast,                     "Cast",                   TYP_STRUCT,     1,      {TYP_STRUCT, TYP_UNDEF,  TYP_UNDEF},   {TYP_INT, TYP_FLOAT, TYP_DOUBLE, TYP_LONG, TYP_CHAR, TYP_UBYTE, TYP_BYTE, TYP_SHORT, TYP_UINT, TYP_ULONG})
 
 // Convert
-SIMD_INTRINSIC("ToVectorDouble",            true,        ToVectorDouble,           "ToVectorDouble",         TYP_STRUCT,     1,      {TYP_BYREF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_LONG, TYP_ULONG, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
-SIMD_INTRINSIC("ToVectorInt64",             true,        ToVectorInt64,            "ToVectorInt64",          TYP_STRUCT,     1,      {TYP_BYREF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_DOUBLE, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
+SIMD_INTRINSIC("ToVectorDouble",            true,        ToVectorDouble,           "ToVectorDouble",         TYP_STRUCT,     1,      {TYP_BYREF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_INT, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
+SIMD_INTRINSIC("ToVectorInt32",             true,        ToVectorInt32,            "ToVectorInt32",          TYP_STRUCT,     1,      {TYP_BYREF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_DOUBLE, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
 
 // Gather
 SIMD_INTRINSIC("Gather",                    true,        Gather,                   "Gather",                 TYP_STRUCT,     3,      {TYP_BYREF,  TYP_REF,    TYP_STRUCT},  {TYP_INT, TYP_FLOAT, TYP_DOUBLE, TYP_LONG, TYP_UINT, TYP_UBYTE, TYP_ULONG, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})

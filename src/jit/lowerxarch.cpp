@@ -1914,6 +1914,8 @@ Lowering::TreeNodeInfoInitSIMD(GenTree* tree, LinearScan* lsra)
         break;    
 
     case SIMDIntrinsicCast:
+    case SIMDIntrinsicToVectorDouble:
+    case SIMDIntrinsicToVectorInt32:
         info->srcCount = 1;
         break;
 

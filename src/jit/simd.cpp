@@ -2185,6 +2185,49 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
         }
         break;
 
+    case SIMDIntrinsicGather:
+        {
+            // op2 - index vector, containing indices into array
+            // op1 - array itself
+            // result - vector
+            unsigned int vectorLength = getSIMDVectorLength(size, baseType);
+
+            // We will need to generate an array bounds check for the last array element we will access.
+            // (This constructor takes only the zero-based arrays.)
+            // So, we need to generate an internal intrinsic call to get the max value of the index vector,
+            // and that is what we will check against.
+            op2 = impSIMDPopStack();
+            assert(op2->TypeGet() == TYP_STRUCT);
+            GenTree* indexVectorCopy = [make a copy of the indexVector];
+            GenTree* checkIndexExpr = [expression returning max of indexVector];
+
+            // Clone the array for use in the bounds check.
+            op1 = impSIMDPopStack();
+            assert(op1->TypeGet() == TYP_REF);
+            GenTree* arrayRef = op1;
+            GenTree* asg = nullptr;
+            if ((arrayRef->gtFlags & GTF_SIDE_EFFECT) != 0)
+            {
+                op1 = fgInsertCommaFormTemp(&arrayRef);
+            }
+            else
+            {
+                op1 = gtCloneExpr(arrayRef);
+            }
+            assert(op1 != nullptr);
+
+            // Insert a bounds check for index + offset - 1.
+            // This must be a "normal" array.
+            GenTreeArrLen*       arrLen     = new (this, GT_ARR_LENGTH) GenTreeArrLen(TYP_INT, arrayRef, (int)offsetof(CORINFO_Array, length));
+            GenTreeBoundsChk*    arrBndsChk = new (this, GT_ARR_BOUNDS_CHECK) GenTreeBoundsChk(GT_ARR_BOUNDS_CHECK, TYP_VOID, arrLen, checkIndexExpr);
+
+            // Create a GT_COMMA tree for the bounds check.
+            op1 = gtNewOperNode(GT_COMMA, op1->TypeGet(), arrBndsChk, op1);
+
+            simdTree = gtNewSIMDNode(genActualType(callType), op1, op2, simdIntrinsicID, baseType, size);
+        }
+        break;
+
     case SIMDIntrinsicInitFixed:
         {
             // We are initializing a fixed-length vector VLarge with a smaller fixed-length vector VSmall, plus 1 or 2 additional floats.
@@ -2540,7 +2583,7 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
     // Unary operators that take and return a Vector.
     case SIMDIntrinsicCast:
     case SIMDIntrinsicToVectorDouble:
-    case SIMDIntrinsicToVectorInt64:
+    case SIMDIntrinsicToVectorInt32:
         {
             op1 = impSIMDPopStack(instMethod);
             assert(op1->TypeGet() == TYP_STRUCT);
