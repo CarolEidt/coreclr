@@ -2190,7 +2190,7 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
             // op2 - index vector, containing indices into array
             // op1 - array itself
             // result - vector
-            unsigned int vectorLength = getSIMDVectorLength(size, baseType);
+            int vectorLength = getSIMDVectorLength(size, baseType);
 
             // We will need to generate an array bounds check for the last array element we will access.
             // (This constructor takes only the zero-based arrays.)
@@ -2198,8 +2198,18 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
             // and that is what we will check against.
             op2 = impSIMDPopStack();
             assert(op2->TypeGet() == TYP_STRUCT);
-            GenTree* indexVectorCopy = [make a copy of the indexVector];
-            GenTree* checkIndexExpr = [expression returning max of indexVector];
+            GenTree* indexVector = op2;
+            GenTree* indexVectorCopy;
+            if ((indexVector->gtFlags & GTF_SIDE_EFFECT) != 0)
+            {
+                indexVectorCopy = fgInsertCommaFormTemp(&indexVector);
+            }
+            else
+            {
+                indexVectorCopy = gtCloneExpr(indexVector);
+            }
+            int indexCount = Min(vectorLength, getSIMDVectorLength(size, TYP_INT));
+            GenTree* checkIndexExpr = gtNewSIMDNode(TYP_INT, indexVectorCopy, gtNewIconNode(indexCount, TYP_INT), SIMDIntrinsicMaxHorizontal, TYP_INT, size);
 
             // Clone the array for use in the bounds check.
             op1 = impSIMDPopStack();
@@ -2225,6 +2235,7 @@ GenTreePtr Compiler::impSIMDIntrinsic(OPCODE                   opcode,
             op1 = gtNewOperNode(GT_COMMA, op1->TypeGet(), arrBndsChk, op1);
 
             simdTree = gtNewSIMDNode(genActualType(callType), op1, op2, simdIntrinsicID, baseType, size);
+            retVal = simdTree;
         }
         break;
 

@@ -210,7 +210,7 @@ add_compile_options(/d2Zi+) # make optimized builds debugging easier
 add_compile_options(/nologo) # Suppress Startup Banner
 add_compile_options(/W3) # set warning level to 3
 add_compile_options(/WX) # treat warnings as errors
-add_compile_options(/O1) # minimize space
+add_compile_options(/Od) # minimize space
 add_compile_options(/Oi) # enable intrinsics
 add_compile_options(/Oy-) # disable suppressing of the creation of frame pointers on the call stack for quicker function calls
 add_compile_options(/U_MT) # undefine the predefined _MT macro

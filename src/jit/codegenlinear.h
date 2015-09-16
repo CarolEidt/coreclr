@@ -56,6 +56,8 @@
     void                genSIMDIntrinsicShuffleSSE2(GenTreeSIMD* simdNode);
     void                genSIMDIntrinsicUpperSave(GenTreeSIMD* simdNode);
     void                genSIMDIntrinsicUpperRestore(GenTreeSIMD* simdNode);
+    void                genSIMDIntrinsicGather(GenTreeSIMD* simdNode);
+    void                genSIMDIntrinsicMaxHorizontal(GenTreeSIMD* simdNode);
 
     void                genSIMDIntrinsic(GenTreeSIMD* simdNode);
     void                genSIMDCheck(GenTree* treeNode);

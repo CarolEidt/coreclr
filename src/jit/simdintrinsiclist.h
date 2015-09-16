@@ -117,7 +117,12 @@ SIMD_INTRINSIC("ToVectorDouble",            true,        ToVectorDouble,        
 SIMD_INTRINSIC("ToVectorInt32",             true,        ToVectorInt32,            "ToVectorInt32",          TYP_STRUCT,     1,      {TYP_BYREF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_DOUBLE, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
 
 // Gather
-SIMD_INTRINSIC("Gather",                    true,        Gather,                   "Gather",                 TYP_STRUCT,     3,      {TYP_BYREF,  TYP_REF,    TYP_STRUCT},  {TYP_INT, TYP_FLOAT, TYP_DOUBLE, TYP_LONG, TYP_UINT, TYP_UBYTE, TYP_ULONG, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
+SIMD_INTRINSIC("Gather",                    false,       Gather,                   "Gather",                 TYP_STRUCT,     2,      {TYP_REF,    TYP_STRUCT, TYP_UNDEF},  {TYP_INT, TYP_FLOAT, TYP_DOUBLE, TYP_LONG, TYP_UINT, TYP_UBYTE, TYP_ULONG, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
+
+// MaxHorizontal is currently only used internally.
+// It is used in the implementation of Gather, is only implemented on Vector<int>.
+// It returns the maximum value between vector[0] and vector[i], where i is the second argument.
+SIMD_INTRINSIC("MaxHorizontal",             true,        MaxHorizontal,            "MaxHorizontal",          TYP_STRUCT,     2,      {TYP_STRUCT, TYP_INT,    TYP_UNDEF},   {TYP_INT, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
 
 // Miscellaneous
 SIMD_INTRINSIC("get_IsHardwareAccelerated", false,       HWAccel,                  "HWAccel",                TYP_BOOL,       0,      {TYP_UNDEF,  TYP_UNDEF,  TYP_UNDEF},   {TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF, TYP_UNDEF})
