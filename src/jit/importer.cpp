@@ -5974,15 +5974,6 @@ var_types  Compiler::impImportCall(OPCODE                  opcode,
         }
 #endif // FEATURE_SIMD
 
-#ifdef _TARGET_XARCH_
-        // Temporary code to loop for a specific method name to translate to popcnt
-        call = impPopCountIntrinsic(clsHnd, methHnd, sig, pResolvedToken->token);
-        if (call != nullptr)
-        {
-            bIntrinsicImported = true;
-            goto DONE_CALL;
-        }
-#endif
 
         if ((mflags & CORINFO_FLG_VIRTUAL) && (mflags & CORINFO_FLG_EnC) &&
             (opcode == CEE_CALLVIRT))
@@ -17033,73 +17024,6 @@ bool Compiler::IsMathIntrinsic(CorInfoIntrinsics intrinsicId)
 bool Compiler::IsMathIntrinsic(GenTreePtr tree)
 {
     return (tree->OperGet() == GT_INTRINSIC) && IsMathIntrinsic(tree->gtIntrinsic.gtIntrinsicId);
-}
-//------------------------------------------------------------------------
-// impPopCountIntrinsic: Check method to see if it is to see if it is a PopCount
-//                        method that we can implement as an intrinsic in the JIT.
-//
-// Arguments:
-//    clsHnd     - The handle of the class of the method.
-//    method     - The handle of the method.
-//    sig        - The call signature for the method.
-//    memberRef  - The memberRef token for the method reference.
-//
-// Return Value:
-//    If:
-//      - clsHnd is a a type named BitOps, and
-//      - method is a static method named PopCount that
-//      - has a single ulong argument,
-//    Then:
-//      - return a GT_POPCNT tree
-//    Otherwise:
-//      - return nullptr
-//    NOTE: This is a sample implementation only, and doesn't really check the
-//    method to ensure that it implements what we think it does.
-
-GenTree*
-Compiler::impPopCountIntrinsic(CORINFO_CLASS_HANDLE     clsHnd,
-                                CORINFO_METHOD_HANDLE    method,
-                                CORINFO_SIG_INFO *       sig,
-                                int                      memberRef)
-{
-    // It must be a static method.
-    if ((sig->callConv & CORINFO_CALLCONV_HASTHIS) != 0)
-    {
-        return nullptr;
-    }
-    // It must have a single argument.
-    if (sig->numArgs != 1)
-    {
-        return nullptr;
-    }
-    // The argument must be unsigned long.
-	// That means that the evaluation type on the CLI stack will be long,
-	// and the argument's signature type should be ULONG.
-    GenTree* arg = impStackTop(0).val;
-    if (!varTypeIsLong(arg))
-    {
-        return nullptr;
-    }
-    CORINFO_CLASS_HANDLE        argClass;
-    CorInfoType corType = strip(info.compCompHnd->getArgType(sig, sig->args, &argClass));
-    if (corType != CORINFO_TYPE_ULONG)
-    {
-        return nullptr;
-    }
-    // It must be named "PopCount".
-    const char*  methodName = eeGetMethodName(method, nullptr);
-    if (strcmp(methodName, "PopCount") != 0)
-    {
-        return nullptr;
-    }
-    // It must be declared on a class named "BitOps".
-    const char* className = eeGetClassName(clsHnd);
-    if (strcmp(className, "BitOps") != 0)
-    {
-        return nullptr;
-    }
-    // Bingo!
-    return gtNewOperNode(GT_POPCNT, TYP_INT, impPopStack().val);
 }
 
 /*****************************************************************************/

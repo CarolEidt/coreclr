@@ -8174,3 +8174,194 @@ void                Compiler::optOptimizeBools()
     fgDebugCheckBBlist();
 #endif
 }
+
+//------------------------------------------------------------------------
+// optFindLoopIntrinsics: Try to find simple loops that can be turned into an intrinsic
+//
+// Return Value:
+//    None.
+//
+// Assumptions:
+//    Loop recognition and SSA construction have already been done.
+//    Must be run after all value-numbering dependent optimizations because it doesn't
+//    currently update (or invalidate) value numbers.
+//
+// Notes:
+//    This is currently only used as a demonstration sample for the RyuJIT tutorial
+
+void
+Compiler::optFindLoopIntrinsics()
+{
+    for (unsigned char loopInd = 0; loopInd < optLoopCount; loopInd++)
+    {
+        if ((optLoopTable[loopInd].lpFlags & LPFLG_REMOVED) != 0)
+            continue;
+
+        BasicBlock* block = optLoopTable[loopInd].lpFirst;
+        BasicBlock* nextBlock = block->bbNext;
+        // Is this a single-block loop?
+        if ((optLoopTable[loopInd].lpTop    != block) ||
+            (optLoopTable[loopInd].lpBottom != block) ||
+            (optLoopTable[loopInd].lpEntry  != block) ||
+            (optLoopTable[loopInd].lpExit   != block))
+        {
+            continue;
+        }
+        // Does the loop run from 0 to < 64 by 1?
+        if (((optLoopTable[loopInd].lpFlags & LPFLG_CONST_INIT) == 0) ||
+            (optLoopTable[loopInd].lpConstInit != 0) ||
+            ((optLoopTable[loopInd].lpFlags & LPFLG_CONST_LIMIT) == 0) ||
+            (optLoopTable[loopInd].lpConstLimit() != 64) ||
+            (optLoopTable[loopInd].lpIterConst() != 1))
+        {
+            continue;
+        }
+        // Are there at least 4 statements?
+        GenTreeStmt* firstStmt = block->FirstNonPhiDef();
+        noway_assert(firstStmt != nullptr);
+        GenTreeStmt* secondStmt = firstStmt->gtNextStmt;
+        if (secondStmt == nullptr)
+        {
+            continue;
+        }
+        GenTreeStmt* thirdStmt = secondStmt->gtNextStmt;
+        if (thirdStmt == nullptr)
+        {
+            continue;
+        }
+        GenTreeStmt* fourthStmt = thirdStmt->gtNextStmt;
+        if (fourthStmt == nullptr)
+        {
+            continue;
+        }
+        // Is the third statement the increment of the iteration variable?
+        if (thirdStmt->gtStmtExpr != optLoopTable[loopInd].lpIterTree)
+        {
+            continue;
+        }
+		// Is the fourth statement the branch? (Note that if it is, there
+		// are no further statements in the block.)
+        if (fourthStmt->gtStmtExpr->gtOper != GT_JTRUE)
+        {
+            continue;
+        }
+        // Make sure the iteration variable is not exposed outside of the loop.
+        // (We could instead simply set it to 64)
+        // (Note that we only have dataflow information if it is tracked, which also
+        // implies that it is not address-taken.)
+        unsigned iVarNum = optLoopTable[loopInd].lpIterVar();
+        if (!lvaTable[iVarNum].lvTracked || VarSetOps::IsMember(this, nextBlock->bbLiveIn, lvaTable[iVarNum].lvVarIndex))
+        {
+            continue;
+        }
+
+        // Now, check to see if the first stmt is of the form count += (bits & 1).
+        GenTree* countUpdateTree = firstStmt->gtStmtExpr;
+        GenTree* countIncrTree = nullptr;
+        genTreeOps countUpdateOper = GT_COUNT;
+		// See if we have a lclVar update tree, and if so get the expression on the right-hand-side.
+        unsigned countVarNum = countUpdateTree->IsLclVarUpdateTree(&countIncrTree, &countUpdateOper);
+        if ((countVarNum == BAD_VAR_NUM) ||
+            (countUpdateOper != GT_ADD) ||
+            !lvaTable[countVarNum].lvTracked ||
+            (countIncrTree->gtOper != GT_AND) ||
+            !countIncrTree->gtOp.gtOp2->IsIntegralConst(1) ||
+            (countIncrTree->gtOp.gtOp1->gtOper != GT_LCL_VAR))
+        {
+            continue;
+        }
+        GenTreeLclVarCommon* bitsVarNode = countIncrTree->gtOp.gtOp1->AsLclVar();
+        unsigned bitsVarNum = bitsVarNode->gtLclNum;
+
+        // Make sure that "bits" is not exposed outside of the loop.
+        // (again, we could simply set it to zero.)
+        if (!lvaTable[bitsVarNum].lvTracked ||
+            (lvaTable[bitsVarNum].lvType != TYP_LONG) ||
+            VarSetOps::IsMember(this, nextBlock->bbLiveIn, lvaTable[bitsVarNum].lvVarIndex))
+        {
+            continue;
+        }
+
+        JITDUMP("Found Possible Popcnt candidate loop\n");
+        JITDUMP("  BB%02u  count: V%02u, bits: V%02u\n", block->bbNum, countVarNum, bitsVarNum);
+
+        // Make sure count has only one other, previous, non-phi def, which is count = 0.
+        // This could be a traversal of the SSA use->def chain ...
+        // But instead we look for 3 names:
+        // 1. init to 0                 (this should be the initial SSA Num + 1) (initDefSsaName)
+        // 2. phi def at loop entry     (this should be the initial SSA Num + 2) (phiDefSsaName)
+        // 3. add bit to count if set   (this should be the initial SSA Num + 3) (countSsaName)
+
+        unsigned countSsaName = countIncrTree->gtOp.gtOp1->gtLclVarCommon.gtSsaNum;
+        if ((countSsaName ==  SsaConfig::RESERVED_SSA_NUM) ||
+            (lvaTable[countVarNum].lvNumSsaNames < (SsaConfig::FIRST_SSA_NUM + 3)))
+        {
+            continue;
+        }
+        unsigned initDefSsaName = SsaConfig::FIRST_SSA_NUM + 1;
+        LclSsaVarDsc* initDefInfo = lvaTable[countVarNum].GetPerSsaData(initDefSsaName);
+        unsigned phiDefSsaName  = SsaConfig::FIRST_SSA_NUM + 2;
+        LclSsaVarDsc* phiDefInfo = lvaTable[countVarNum].GetPerSsaData(phiDefSsaName);
+
+        if ((initDefInfo == nullptr) || (phiDefInfo == nullptr)) continue;
+        GenTree* initDefNode = initDefInfo->m_defLoc.m_tree;
+        GenTree* initDefParent = initDefNode->gtGetParent(nullptr);
+        if ((initDefParent->gtOper != GT_ASG) || (!initDefParent->gtOp.gtOp2->IsIntegralConst(0))) continue;
+        GenTree* phiDefNode = phiDefInfo->m_defLoc.m_tree;
+        GenTree* phiDefParent = phiDefNode->gtGetParent(nullptr);
+        if ((phiDefParent->OperGet() != GT_ASG) ||( phiDefParent->gtOp.gtOp2->OperGet() != GT_PHI))
+        {
+            continue;
+        }
+
+        // Now, see if the second stmt is of the form bits >>= 1.
+        GenTree* bitsUpdateTree = secondStmt->gtStmtExpr;
+        GenTree* bitsShiftTree = nullptr;
+        genTreeOps bitsShiftOper = GT_COUNT;
+        unsigned bitsVarNum2 = bitsUpdateTree->IsLclVarUpdateTree(&bitsShiftTree, &bitsShiftOper);
+        if ((bitsVarNum2 != bitsVarNum) ||
+            (bitsShiftOper != GT_RSZ) ||
+            !bitsShiftTree->IsIntegralConst(1))
+        {
+            continue;
+        }
+
+        // Ok, we've passed all the checks!
+        JITDUMP("  Transforming the loop\n");
+
+        // Invalidate the loop info.
+        optLoopTable[loopInd].lpFlags |= LPFLG_REMOVED;
+
+        // Modify the refCnts within the loop:
+        // - i: eliminated all 3 refs in the loop (maybe disjoint def/uses elsewhere)
+        // - bits: reduced from 3 refs to 1
+        // - count: reduced from 2 refs to 1 (init outside loop will be eliminated as dead)
+        lvaTable[iVarNum].decRefCnts(block->getBBWeight(this), this);
+        lvaTable[iVarNum].decRefCnts(block->getBBWeight(this), this);
+        lvaTable[iVarNum].decRefCnts(block->getBBWeight(this), this);
+        lvaTable[bitsVarNum].decRefCnts(block->getBBWeight(this), this);
+        lvaTable[bitsVarNum].decRefCnts(block->getBBWeight(this), this);
+        lvaTable[countVarNum].decRefCnts(block->getBBWeight(this), this);
+
+        // We will reuse the firstStmt for our popCnt assignment to 'count',
+		// replacing "count = count + (bits & 1)" with "count = popcnt(bits)".
+        GenTree* popCntNode = gtNewOperNode(GT_POPCNT, TYP_INT, bitsVarNode);
+        popCntNode->SetCosts(5, 3);
+        
+        countUpdateTree->gtOp.gtOp2 = popCntNode;
+
+        // It is now the first, and only stmt in the block (gtPrev of the first stmt, by
+        // convention, points to the last stmt).
+        block->bbTreeList = firstStmt;
+        firstStmt->gtPrev = firstStmt;
+        firstStmt->gtNext = nullptr;
+
+        // Eliminate the link from the block to itself.
+        block->bbJumpKind = BBJ_NONE;
+        fgRemoveRefPred(block, block);
+        fgModified = true;
+
+        // Re-sequence the nodes.
+        fgSetStmtSeq(firstStmt);
+    }
+}

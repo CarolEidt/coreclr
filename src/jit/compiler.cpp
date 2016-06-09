@@ -3775,6 +3775,8 @@ void                 Compiler::compCompile(void * * methodCodePtr,
         }
 #endif // ASSERTION_PROP
 
+        optFindLoopIntrinsics();
+
         /* update the flowgraph if we modified it during the optimization phase*/
         if  (fgModified)
         {
