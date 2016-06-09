@@ -331,6 +331,11 @@ INST3( vinsertf128,  "insertf128"  , 0, IUM_WR, 0, 0, BAD_CODE,     BAD_CODE, SS
 INST3( vzeroupper,   "zeroupper"   , 0, IUM_WR, 0, 0, 0xC577F8,     BAD_CODE, BAD_CODE)      // Zero upper 128-bits of all YMM regs (includes 2-byte fixed VEX prefix)
 
 INST3(LAST_AVX_INSTRUCTION, "LAST_AVX_INSTRUCTION",  0, IUM_WR, 0, 0, BAD_CODE, BAD_CODE, BAD_CODE)
+
+// Popcnt is encoded with the same prefix (F3 0F) as the SSEFLT instructions, but it is neither an
+// SSE nor an AVX (VEX encoded) instruction.
+INST3( popcnt,       "popcnt"     , 0, IUM_WR, 0, 0, BAD_CODE,     BAD_CODE,      SSEFLT(0xB8))   // Count bits
+
 #endif // !LEGACY_BACKEND
 //    enum     name            FP  updmode rf wf R/M,R/M[reg]  R/M,icon
 

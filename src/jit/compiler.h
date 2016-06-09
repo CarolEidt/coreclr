@@ -7161,6 +7161,12 @@ XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
                                              CORINFO_SIG_INFO *       sig,
                                              int                      memberRef);
 
+    // check methodHnd to see if it is a PopCount method that we can implement as an intrinsic in the JIT.
+    GenTree*                impPopCountIntrinsic(CORINFO_CLASS_HANDLE     clsHnd,
+                                                 CORINFO_METHOD_HANDLE    method,
+                                                 CORINFO_SIG_INFO *       sig,
+                                                 int                      memberRef);
+
     GenTreePtr              getOp1ForConstructor(OPCODE               opcode,
                                                  GenTreePtr           newobjThis,
                                                  CORINFO_CLASS_HANDLE clsHnd);

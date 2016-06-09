@@ -84,6 +84,8 @@ GTNODE(SIMD_CHK         , "simdChk"       ,0,GTK_SPECIAL)       // Compare wheth
                                                                    // does the compare, so that it can be more easily optimized.  But that involves generating qmarks at import time...
 #endif // FEATURE_SIMD
 
+GTNODE(POPCNT           , "popCnt"       ,0,GTK_UNOP)           // PopCount intrinsic
+
 //-----------------------------------------------------------------------------
 //  Binary operators (2 operands):
 //-----------------------------------------------------------------------------

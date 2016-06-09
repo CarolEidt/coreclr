@@ -9239,7 +9239,7 @@ BYTE*               emitter::emitOutputRR(BYTE* dst, instrDesc* id)
     // Get the 'base' opcode
     code = insCodeRM(ins);
     code = AddVexPrefixIfNeeded(ins, code, size);
-    if (IsSSE2Instruction(ins) || IsAVXInstruction(ins))
+    if (IsSSE2Instruction(ins) || IsAVXInstruction(ins) || (ins == INS_popcnt))
     {
         code = insEncodeRMreg(ins, code);
 

@@ -2744,6 +2744,12 @@ CodeGen::genCodeForTreeNode(GenTreePtr treeNode)
         genProduceReg(treeNode);
         break;
 
+     case GT_POPCNT:
+        genConsumeReg(treeNode->gtOp.gtOp1);
+        inst_RV_RV(INS_popcnt, targetReg, treeNode->gtOp.gtOp1->gtRegNum);
+        genProduceReg(treeNode);
+        break;
+     
     default:
         {
 #ifdef  DEBUG
