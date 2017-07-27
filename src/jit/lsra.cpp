@@ -4071,7 +4071,7 @@ void LinearScan::buildRefPositionsForNode(GenTree*                  tree,
                 pos->delayRegFree = true;
             }
 
-            if (useNode->IsRegOptional())
+            if (useNode->IsRegOptionalUse())
             {
                 pos->setAllocateIfProfitable(true);
             }
@@ -4213,6 +4213,12 @@ void LinearScan::buildRefPositionsForNode(GenTree*                  tree,
             assert(defNode->IsUnusedValue() || (defNode->gtOper == GT_LOCKADD));
             pos->isLocalDefUse = true;
             pos->lastUse       = true;
+        }
+        // If the Def is RegOptional, we can only actually make it RegOptional if its consumer
+        // has also set it as RegOptional.
+        if (defNode->IsRegOptionalDef() && defNode->IsRegOptionalUse())
+        {
+            pos->setAllocateIfProfitable(true);
         }
         interval->updateRegisterPreferences(currCandidates);
         interval->updateRegisterPreferences(useCandidates);
@@ -9160,28 +9166,26 @@ void LinearScan::updateMaxSpill(RefPosition* refPosition)
 
             if (refPosition->spillAfter && !refPosition->reload)
             {
-                currentSpill[typ]++;
-                if (currentSpill[typ] > maxSpill[typ])
-                {
-                    maxSpill[typ] = currentSpill[typ];
-                }
+				incrementSpill(typ);
             }
             else if (refPosition->reload)
             {
-                assert(currentSpill[typ] > 0);
-                currentSpill[typ]--;
-            }
+				decrementSpill(typ);
+			}
             else if (refPosition->AllocateIfProfitable() && refPosition->assignedReg() == REG_NA)
             {
-                // A spill temp not getting reloaded into a reg because it is
-                // marked as allocate if profitable and getting used from its
-                // memory location.  To properly account max spill for typ we
-                // decrement spill count.
-                assert(RefTypeIsUse(refType));
-                assert(currentSpill[typ] > 0);
-                currentSpill[typ]--;
+                // This is a node that is either being used from or defined into a spill temp.
+                // If it is a definition, we will increment the spill count.
+                // If it is a use, we will decrement the spill count.
+                if (RefTypeIsUse(refType))
+                {
+					decrementSpill(typ);
+				}
+                else
+                {
+					incrementSpill(typ);
+				}
             }
-            JITDUMP("  Max spill for %s is %d\n", varTypeName(typ), maxSpill[typ]);
         }
     }
 }
@@ -9443,10 +9447,13 @@ void LinearScan::resolveRegisters()
                 // (local vars are handled in resolveLocalRef, above)
                 // Note that the tree node will be changed from GTF_SPILL to GTF_SPILLED
                 // in codegen, taking care of the "reload" case for temps
-                else if (currentRefPosition->spillAfter || (currentRefPosition->nextRefPosition != nullptr &&
-                                                            currentRefPosition->nextRefPosition->moveReg))
+                else if (!currentRefPosition->isLocalDefUse)
                 {
-                    if (treeNode != nullptr && currentRefPosition->isIntervalRef())
+                    // This is a tree temp that has a use.
+                    RefPosition* nextRefPosition = currentRefPosition->nextRefPosition;
+                    assert(nextRefPosition != nullptr);
+                    assert(currentRefPosition->isIntervalRef());
+                    if (currentRefPosition->spillAfter || nextRefPosition->moveReg || (currentRefPosition->assignedReg() == REG_NA))
                     {
                         if (currentRefPosition->spillAfter)
                         {
@@ -9487,7 +9494,8 @@ void LinearScan::resolveRegisters()
                         RefPosition* nextRefPosition = currentRefPosition->nextRefPosition;
                         assert(nextRefPosition != nullptr);
                         if (INDEBUG(alwaysInsertReload() ||)
-                                nextRefPosition->assignedReg() != currentRefPosition->assignedReg())
+                                (nextRefPosition->assignedReg() != currentRefPosition->assignedReg()) ||
+                                (currentRefPosition->assignedReg() == REG_NA))
                         {
                             if (nextRefPosition->assignedReg() != REG_NA)
                             {
@@ -9496,26 +9504,37 @@ void LinearScan::resolveRegisters()
                             }
                             else
                             {
+                                // In case of tree temps, if the def is spilled or written to a spill temp, and the
+                                // use didn't get a register, set a flag on the tree node to be treated as contained
+                                // at the point of its use.
                                 assert(nextRefPosition->AllocateIfProfitable());
-
-                                // In case of tree temps, if def is spilled and use didn't
-                                // get a register, set a flag on tree node to be treated as
-                                // contained at the point of its use.
-                                if (currentRefPosition->spillAfter && currentRefPosition->refType == RefTypeDef &&
-                                    nextRefPosition->refType == RefTypeUse)
-                                {
-                                    assert(nextRefPosition->treeNode == nullptr);
-                                    treeNode->gtFlags |= GTF_NOREG_AT_USE;
-                                }
+                                assert(currentRefPosition->refType == RefTypeDef && nextRefPosition->refType == RefTypeUse);
+                                assert(currentRefPosition->spillAfter || currentRefPosition->AllocateIfProfitable());
+                                assert(nextRefPosition->treeNode == nullptr);
+                                treeNode->gtFlags |= GTF_NOREG_AT_USE;
+								if (currentRefPosition->assignedReg() == REG_NA)
+								{
+									treeNode->gtFlags |= GTF_SPILLED;
+									// In order to have marked this as regOptionalDef, it must have had at least one
+									// operand that was regOptionalUse. If it received a register and was not spilled,
+									// set it as spilled so can use its spill location as the def location for this node.
+									assert(treeNode->OperIsUnary() || treeNode->OperIsBinary());
+									GenTree* regOptionalSrc = treeNode->gtGetOp1();
+									if (treeNode->OperIsBinary() && !regOptionalSrc->IsRegOptionalUse())
+									{
+										regOptionalSrc = treeNode->gtGetOp2();
+									}
+									assert(regOptionalSrc->IsRegOptionalUse());
+									assert(!regOptionalSrc->IsMultiRegCall());
+									if (!regOptionalSrc->isUsedFromSpillTemp())
+									{
+                                        regOptionalSrc->gtFlags |= GTF_NOREG_AT_USE;
+										regOptionalSrc->gtFlags |= GTF_SPILL;
+										treeNode->gtRegNum = REG_NA;
+									}
+								}
                             }
                         }
-                    }
-
-                    // We should never have to "spill after" a temp use, since
-                    // they're single use
-                    else
-                    {
-                        unreached();
                     }
                 }
             }
@@ -11321,15 +11340,10 @@ void TreeNodeInfo::dump(LinearScan* lsra)
     {
         printf(" P");
     }
-    if (regOptional)
-    {
-        printf(" O");
-    }
     if (isInternalRegDelayFree)
     {
         printf(" ID");
     }
-    printf(">\n");
 }
 
 void LinearScan::lsraDumpIntervals(const char* msg)
@@ -11435,10 +11449,6 @@ void LinearScan::lsraDispNode(GenTreePtr tree, LsraTupleDumpMode mode, bool hasD
     }
     if (hasDest)
     {
-        if (mode == LinearScan::LSRA_DUMP_POST && tree->gtFlags & GTF_SPILLED)
-        {
-            assert(tree->gtHasReg());
-        }
         lsraGetOperandString(tree, mode, operandString, operandStringLength);
         printf("%-15s =", operandString);
     }

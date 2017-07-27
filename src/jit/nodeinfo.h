@@ -29,7 +29,6 @@ public:
         isDelayFree            = false;
         hasDelayFreeSrc        = false;
         isTgtPref              = false;
-        regOptional            = false;
         definesAnyRegisters    = false;
         isInternalRegDelayFree = false;
         isNoRegCompare         = false;
@@ -132,9 +131,6 @@ public:
     // isTgtPref is set to true when we have a rmw op, where we would like the result to be allocated
     // in the same register as op1.
     unsigned char isTgtPref : 1;
-
-    // Whether a spilled second src can be treated as a contained operand
-    unsigned char regOptional : 1;
 
     // Whether or not a node defines any registers, whether directly (for nodes where dstCout is non-zero)
     // or indirectly (for contained nodes, which propagate the transitive closure of the registers

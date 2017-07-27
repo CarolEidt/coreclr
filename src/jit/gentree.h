@@ -1169,10 +1169,17 @@ public:
         }
     }
 
-    // NOTE: the three UnusedValue helpers immediately below are defined in lir.h.
+    // Helpers for setting LIRFlags: UnusedValue, RegOptionalUse and RegOptionaDef.
+    // These are defined in lir.h.
     inline void SetUnusedValue();
     inline void ClearUnusedValue();
     inline bool IsUnusedValue() const;
+    inline void SetRegOptionalUse();
+    inline void ClearRegOptionalUse();
+    inline bool IsRegOptionalUse() const;
+    inline void SetRegOptionalDef();
+    inline void ClearRegOptionalDef();
+    inline bool IsRegOptionalDef() const;
 
     bool OperIs(genTreeOps oper)
     {
@@ -2033,7 +2040,8 @@ public:
     {
         assert(IsValue());
         gtFlags &= ~GTF_CONTAINED;
-        ClearRegOptional();
+        ClearRegOptionalUse();
+        ClearRegOptionalDef();
     }
 
 #endif // !LEGACY_BACKEND
@@ -2138,17 +2146,6 @@ public:
     // cast operations
     inline var_types  CastFromType();
     inline var_types& CastToType();
-
-    // Returns true if this gentree node is marked by lowering to indicate
-    // that codegen can still generate code even if it wasn't allocated a
-    // register.
-    bool IsRegOptional() const;
-#ifndef LEGACY_BACKEND
-    void ClearRegOptional()
-    {
-        gtLsraInfo.regOptional = false;
-    }
-#endif
 
     // Returns "true" iff "this" is a phi-related node (i.e. a GT_PHI_ARG, GT_PHI, or a PhiDefn).
     bool IsPhiNode();

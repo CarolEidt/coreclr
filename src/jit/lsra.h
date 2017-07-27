@@ -459,7 +459,23 @@ public:
 
     // Keep track of how many temp locations we'll need for spill
     void initMaxSpill();
-    void updateMaxSpill(RefPosition* refPosition);
+	void incrementSpill(var_types typ)
+	{
+		assert(compiler->tmpNormalizeType(typ) == typ);
+		currentSpill[typ]++;
+		if (currentSpill[typ] > maxSpill[typ])
+		{
+			maxSpill[typ] = currentSpill[typ];
+            JITDUMP("  Max spill for %s is %d\n", varTypeName(typ), maxSpill[typ]);
+        }
+	}
+	void decrementSpill(var_types typ)
+	{
+		assert(compiler->tmpNormalizeType(typ) == typ);
+		assert(currentSpill[typ] > 0);
+		currentSpill[typ]--;
+	}
+	void updateMaxSpill(RefPosition* refPosition);
     void recordMaxSpill();
 
     // max simultaneous spill locations used of every type

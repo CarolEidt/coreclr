@@ -142,12 +142,12 @@ void LinearScan::TreeNodeInfoInit(GenTree* tree)
             // is not, if they were marked regOptional they should now be marked contained instead.
             // TODO-XArch-CQ: When this is being called while RefPositions are being created,
             // use lvLRACandidate here instead.
-            if (info->regOptional)
+            if (tree->IsRegOptionalUse())
             {
                 if (!compiler->lvaTable[tree->AsLclVarCommon()->gtLclNum].lvTracked ||
                     compiler->lvaTable[tree->AsLclVarCommon()->gtLclNum].lvDoNotEnregister)
                 {
-                    info->regOptional = false;
+                    tree->ClearRegOptionalUse();
                     tree->SetContained();
                     info->dstCount = 0;
                 }

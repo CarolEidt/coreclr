@@ -5469,7 +5469,7 @@ void Lowering::ContainCheckDivOrMod(GenTreeOp* node)
         {
             // If there are no containable operands, we can make an operand reg optional.
             // SSE2 allows only divisor to be a memory-op.
-            SetRegOptional(divisor);
+            divisor->SetRegOptionalUse();
         }
         return;
     }
@@ -5491,7 +5491,7 @@ void Lowering::ContainCheckDivOrMod(GenTreeOp* node)
     {
         // If there are no containable operands, we can make an operand reg optional.
         // Div instruction allows only divisor to be a memory op.
-        SetRegOptional(divisor);
+        divisor->SetRegOptionalUse();
     }
 #endif // _TARGET_XARCH_
 }

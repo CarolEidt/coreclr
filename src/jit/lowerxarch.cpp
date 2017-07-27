@@ -1200,7 +1200,7 @@ GenTree* Lowering::PreferredRegOptionalOperand(GenTree* tree)
 
     GenTree* op1 = tree->gtGetOp1();
     GenTree* op2 = tree->gtGetOp2();
-    assert(!op1->IsRegOptional() && !op2->IsRegOptional());
+    assert(!op1->IsRegOptionalUse() && !op2->IsRegOptionalUse());
 
     // We default to op1, as op2 is likely to have the shorter lifetime.
     GenTree* preferredOp = op1;
@@ -1585,12 +1585,12 @@ void Lowering::ContainCheckMul(GenTreeOp* node)
             // Has a contained immediate operand.
             // Only 'other' operand can be marked as reg optional.
             assert(other != nullptr);
-            SetRegOptional(other);
+            other->SetRegOptionalUse();
         }
         else if (hasImpliedFirstOperand)
         {
             // Only op2 can be marke as reg optional.
-            SetRegOptional(op2);
+            op2->SetRegOptionalUse();
         }
         else
         {
@@ -1709,7 +1709,7 @@ void Lowering::ContainCheckCast(GenTreeCast* node)
             {
                 // Mark castOp as reg optional to indicate codegen
                 // can still generate code if it is on stack.
-                SetRegOptional(castOp);
+                castOp->SetRegOptionalUse();
             }
         }
     }
@@ -1784,7 +1784,7 @@ void Lowering::ContainCheckCompare(GenTreeOp* cmp)
         {
             // SSE2 allows only otherOp to be a memory-op. Since otherOp is not
             // contained, we can mark it reg-optional.
-            SetRegOptional(otherOp);
+            otherOp->SetRegOptionalUse();
         }
 
         return;
@@ -1840,7 +1840,7 @@ void Lowering::ContainCheckCompare(GenTreeOp* cmp)
             }
             else
             {
-                SetRegOptional(op1);
+                op1->SetRegOptionalUse();
             }
         }
     }
@@ -1859,14 +1859,14 @@ void Lowering::ContainCheckCompare(GenTreeOp* cmp)
         }
         else if (op1->IsCnsIntOrI())
         {
-            SetRegOptional(op2);
+            op2->SetRegOptionalUse();
         }
         else
         {
             // One of op1 or op2 could be marked as reg optional
             // to indicate that codegen can still generate code
             // if one of them is on stack.
-            SetRegOptional(PreferredRegOptionalOperand(cmp));
+            PreferredRegOptionalOperand(cmp)->SetRegOptionalUse();
         }
     }
 }
@@ -1928,7 +1928,7 @@ bool Lowering::LowerRMWMemOp(GenTreeIndir* storeInd)
 
     // We have already done containment analysis on the indirSrc op.
     // If any of its operands are marked regOptional, reset that now.
-    indirSrc->AsOp()->gtOp1->ClearRegOptional();
+    indirSrc->AsOp()->gtOp1->ClearRegOptionalUse();
     if (GenTree::OperIsBinary(oper))
     {
         // On Xarch RMW operations require the source to be an immediate or in a register.
@@ -1938,7 +1938,7 @@ bool Lowering::LowerRMWMemOp(GenTreeIndir* storeInd)
         {
             indirOpSource->ClearContained();
         }
-        indirSrc->AsOp()->gtOp2->ClearRegOptional();
+        indirSrc->AsOp()->gtOp2->ClearRegOptionalUse();
         JITDUMP("Lower succesfully detected an assignment of the form: *addrMode BinOp= source\n");
     }
     else
@@ -2110,7 +2110,7 @@ void Lowering::ContainCheckBoundsChk(GenTreeBoundsChk* node)
         else
         {
             // We can mark 'other' as reg optional, since it is not contained.
-            SetRegOptional(other);
+            other->SetRegOptionalUse();
         }
     }
 }
@@ -2135,7 +2135,7 @@ void Lowering::ContainCheckIntrinsic(GenTreeOp* node)
         {
             // Mark the operand as reg optional since codegen can still
             // generate code if op1 is on stack.
-            SetRegOptional(op1);
+            op1->SetRegOptionalUse();
         }
     }
 }

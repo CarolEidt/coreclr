@@ -214,21 +214,7 @@ private:
     bool IsCallTargetInRange(void* addr);
 
 #if defined(_TARGET_XARCH_)
-    //----------------------------------------------------------------------
-    // SetRegOptional - sets a bit to indicate to LSRA that register
-    // for a given tree node is optional for codegen purpose.  If no
-    // register is allocated to such a tree node, its parent node treats
-    // it as a contained memory operand during codegen.
-    //
-    // Arguments:
-    //    tree    -   GenTree node
-    //
-    // Returns
-    //    None
-    void SetRegOptional(GenTree* tree)
-    {
-        tree->gtLsraInfo.regOptional = true;
-    }
+    void TreeNodeInfoInitSimple(GenTree* tree);
 
     GenTree* PreferredRegOptionalOperand(GenTree* tree);
 
@@ -263,13 +249,14 @@ private:
         const bool op1Legal = tree->OperIsCommutative() && (operatorSize == genTypeSize(op1->TypeGet()));
         const bool op2Legal = operatorSize == genTypeSize(op2->TypeGet());
 
-        if (op1Legal)
+        GenTree* regOptionalNode = op1Legal ? (op2Legal ? PreferredRegOptionalOperand(tree) : op1) : (op2Legal ? op2 : nullptr);
+        if (regOptionalNode != nullptr)
         {
-            SetRegOptional(op2Legal ? PreferredRegOptionalOperand(tree) : op1);
-        }
-        else if (op2Legal)
-        {
-            SetRegOptional(op2);
+            regOptionalNode->SetRegOptionalUse();
+            if (!regOptionalNode->OperIsLocal())
+            {
+                tree->SetRegOptionalDef();
+            }
         }
     }
 #endif // defined(_TARGET_XARCH_)

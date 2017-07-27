@@ -576,7 +576,7 @@ void CodeGen::genCodeForMulHi(GenTreeOp* treeNode)
     {
         ins = INS_mulEAX;
     }
-    emit->emitInsBinary(ins, size, treeNode, rmOp);
+    emit->emitInsBinary(ins, size, treeNode, regOp, rmOp);
 
     // Move the result to the desired register, if necessary
     if (treeNode->OperGet() == GT_MULHI && targetReg != REG_RDX)
@@ -715,7 +715,7 @@ void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
 
         if (dividend->gtRegNum == targetReg)
         {
-            emit->emitInsBinary(genGetInsForOper(treeNode->gtOper, targetType), size, treeNode, divisor);
+            emit->emitInsBinary(genGetInsForOper(treeNode->gtOper, targetType), size, treeNode, dividend, divisor);
         }
         else if (divisor->isUsedFromReg() && divisor->gtRegNum == targetReg)
         {
@@ -729,7 +729,7 @@ void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
         else
         {
             inst_RV_RV(ins_Copy(targetType), targetReg, dividend->gtRegNum, targetType);
-            emit->emitInsBinary(genGetInsForOper(treeNode->gtOper, targetType), size, treeNode, divisor);
+            emit->emitInsBinary(genGetInsForOper(treeNode->gtOper, targetType), size, treeNode, dividend, divisor);
         }
     }
     else
@@ -760,7 +760,7 @@ void CodeGen::genCodeForDivMod(GenTreeOp* treeNode)
             ins = INS_idiv;
         }
 
-        emit->emitInsBinary(ins, size, treeNode, divisor);
+        emit->emitInsBinary(ins, size, treeNode, dividend, divisor);
 
         // DIV/IDIV instructions always store the quotient in RAX and the remainder in RDX.
         // Move the result to the desired register, if necessary
@@ -815,12 +815,26 @@ void CodeGen::genCodeForBinary(GenTree* treeNode)
     GenTreePtr op1 = treeNode->gtGetOp1();
     GenTreePtr op2 = treeNode->gtGetOp2();
 
-    // Commutative operations can mark op1 as contained or reg-optional to generate "op reg, memop/immed"
-    if (!op1->isUsedFromReg())
+    if (targetReg == REG_NA)
     {
+        // Either op1->isUsedFromSpillTemp(), or op2->isUsedFromSpillTemp() and the op is commutative.
+        if (op2->isUsedFromSpillTemp())
+        {
+            GenTree* tmp = op1;
+            op1 = op2;
+            op2 = tmp;
+        }
+        else
+        {
+            assert(op1->isUsedFromSpillTemp());
+        }
+    }
+    else if (!op1->isUsedFromReg())
+    {
+        // Commutative operations can mark op1 as contained or reg-optional to generate "op reg, memop/immed"
         assert(treeNode->OperIsCommutative());
         assert(op1->isMemoryOp() || op1->IsLocal() || op1->IsCnsNonZeroFltOrDbl() || op1->IsIntCnsFitsInI32() ||
-               op1->IsRegOptional());
+               op1->IsRegOptionalUse());
 
         op1 = treeNode->gtGetOp2();
         op2 = treeNode->gtGetOp1();
@@ -828,17 +842,14 @@ void CodeGen::genCodeForBinary(GenTree* treeNode)
 
     instruction ins = genGetInsForOper(treeNode->OperGet(), targetType);
 
-    // The arithmetic node must be sitting in a register (since it's not contained)
-    noway_assert(targetReg != REG_NA);
-
     regNumber op1reg = op1->isUsedFromReg() ? op1->gtRegNum : REG_NA;
     regNumber op2reg = op2->isUsedFromReg() ? op2->gtRegNum : REG_NA;
 
     GenTreePtr dst;
     GenTreePtr src;
 
-    // This is the case of reg1 = reg1 op reg2
-    // We're ready to emit the instruction without any moves
+    // This is the case of "reg1 op= reg2" or "[spill-temp] op= reg2".
+    // We're ready to emit the instruction without any moves.
     if (op1reg == targetReg)
     {
         dst = op1;
@@ -902,7 +913,7 @@ void CodeGen::genCodeForBinary(GenTree* treeNode)
             return;
         }
     }
-    regNumber r = emit->emitInsBinary(ins, emitTypeSize(treeNode), dst, src);
+    regNumber r = emit->emitInsBinary(ins, emitTypeSize(treeNode), treeNode, dst, src);
     noway_assert(r == targetReg);
 
     if (treeNode->gtOverflowEx())
@@ -999,7 +1010,7 @@ void CodeGen::genCodeForMul(GenTreeOp* treeNode)
         {
             // use the 3-op form with immediate
             ins = getEmitter()->inst3opImulForReg(targetReg);
-            emit->emitInsBinary(ins, size, rmOp, immOp);
+            emit->emitInsBinary(ins, size, treeNode, rmOp, immOp);
         }
     }
     else // we have no contained immediate operand
@@ -1034,7 +1045,7 @@ void CodeGen::genCodeForMul(GenTreeOp* treeNode)
             inst_RV_RV(ins_Copy(targetType), mulTargetReg, regOp->gtRegNum, targetType);
         }
 
-        emit->emitInsBinary(ins, size, treeNode, rmOp);
+        emit->emitInsBinary(ins, size, treeNode, regOp, rmOp);
 
         // Move the result to the desired register, if necessary
         if ((ins == INS_mulEAX) && (targetReg != REG_RAX))
@@ -1619,7 +1630,7 @@ void CodeGen::genCodeForReturnTrap(GenTreeOp* tree)
     genConsumeRegs(data);
     GenTreeIntCon cns = intForm(TYP_INT, 0);
     cns.SetContained();
-    getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(TYP_INT), data, &cns);
+	getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(TYP_INT), nullptr, data, &cns);
 
     BasicBlock* skipLabel = genCreateTempLabel();
 
@@ -3709,7 +3720,7 @@ void CodeGen::genLockedInstructions(GenTreeOp* treeNode)
     // so create a temporary node to feed into the pattern matching
     GenTreeIndir i = indirForm(type, addr);
     i.SetContained();
-    getEmitter()->emitInsBinary(ins, emitTypeSize(type), &i, data);
+    getEmitter()->emitInsBinary(ins, emitTypeSize(type), nullptr, &i, data);
 
     if (treeNode->gtRegNum != REG_NA)
     {
@@ -3826,7 +3837,7 @@ void CodeGen::genRangeCheck(GenTreePtr oper)
     assert(emitTypeSize(bndsChkType) >= emitTypeSize(src1->TypeGet()));
 #endif // DEBUG
 
-    getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(bndsChkType), src1, src2);
+    getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(bndsChkType), nullptr, src1, src2);
     genJumpToThrowHlpBlk(jmpKind, bndsChk->gtThrowKind, bndsChk->gtIndRngFailBB);
 }
 
@@ -4447,7 +4458,7 @@ void CodeGen::genCodeForStoreLclFld(GenTreeLclFld* tree)
 
     GenTreePtr op1 = tree->gtGetOp1();
     genConsumeRegs(op1);
-    getEmitter()->emitInsBinary(ins_Store(targetType), emitTypeSize(tree), tree, op1);
+	getEmitter()->emitInsBinary(ins_Store(targetType), emitTypeSize(tree), nullptr, tree, op1);
 
     genUpdateLife(tree);
 }
@@ -4549,7 +4560,7 @@ void CodeGen::genCodeForStoreLclVar(GenTreeLclVar* tree)
             else if (op1->gtRegNum != targetReg)
             {
                 assert(op1->gtRegNum != REG_NA);
-                emit->emitInsBinary(ins_Move_Extend(targetType, true), emitTypeSize(tree), tree, op1);
+				inst_RV_RV(ins_Move_Extend(targetType, true), targetReg, op1->gtRegNum, targetType, emitTypeSize(tree));
             }
         }
     }
@@ -4617,7 +4628,7 @@ void CodeGen::genCodeForIndexAddr(GenTreeIndexAddr* node)
         }
 
         // Generate the range check.
-        getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(TYP_I_IMPL), index, &arrLen);
+        getEmitter()->emitInsBinary(INS_cmp, emitTypeSize(TYP_I_IMPL), nullptr, index, &arrLen);
         genJumpToThrowHlpBlk(EJ_jae, SCK_RNGCHK_FAIL, node->gtIndRngFailBB);
     }
 
@@ -6214,7 +6225,7 @@ void CodeGen::genCompareFloat(GenTreePtr treeNode)
     ins     = ins_FloatCompare(op1Type);
     cmpAttr = emitTypeSize(op1Type);
 
-    getEmitter()->emitInsBinary(ins, cmpAttr, op1, op2);
+    getEmitter()->emitInsBinary(ins, cmpAttr, nullptr, op1, op2);
 
     // Are we evaluating this into a register?
     if (targetReg != REG_NA)
@@ -6379,7 +6390,7 @@ void CodeGen::genCompareInt(GenTreePtr treeNode)
     // TYP_UINT and TYP_ULONG should not appear here, only small types can be unsigned
     assert(!varTypeIsUnsigned(type) || varTypeIsSmall(type));
 
-    getEmitter()->emitInsBinary(ins, emitTypeSize(type), op1, op2);
+    getEmitter()->emitInsBinary(ins, emitTypeSize(type), nullptr, op1, op2);
 
     // Are we evaluating this into a register?
     if (targetReg != REG_NA)
@@ -6886,7 +6897,7 @@ void CodeGen::genFloatToFloatCast(GenTreePtr treeNode)
     else
     {
         instruction ins = ins_FloatConv(dstType, srcType);
-        getEmitter()->emitInsBinary(ins, emitTypeSize(dstType), treeNode, op1);
+        getEmitter()->emitInsBinary(ins, emitTypeSize(dstType), nullptr, treeNode, op1);
     }
 
     genProduceReg(treeNode);
@@ -6980,7 +6991,7 @@ void CodeGen::genIntToFloatCast(GenTreePtr treeNode)
     // Note that here we need to specify srcType that will determine
     // the size of source reg/mem operand and rex.w prefix.
     instruction ins = ins_FloatConv(dstType, TYP_INT);
-    getEmitter()->emitInsBinary(ins, emitTypeSize(srcType), treeNode, op1);
+    getEmitter()->emitInsBinary(ins, emitTypeSize(srcType), nullptr, treeNode, op1);
 
     // Handle the case of srcType = TYP_ULONG. SSE2 conversion instruction
     // will interpret ULONG value as LONG.  Hence we need to adjust the
@@ -7085,7 +7096,7 @@ void CodeGen::genFloatToIntCast(GenTreePtr treeNode)
     // the size of destination integer register and also the rex.w prefix.
     genConsumeOperands(treeNode->AsOp());
     instruction ins = ins_FloatConv(TYP_INT, srcType);
-    getEmitter()->emitInsBinary(ins, emitTypeSize(dstType), treeNode, op1);
+    getEmitter()->emitInsBinary(ins, emitTypeSize(dstType), nullptr, treeNode, op1);
     genProduceReg(treeNode);
 }
 
@@ -7464,7 +7475,7 @@ void CodeGen::genIntrinsic(GenTreePtr treeNode)
             assert(srcNode->TypeGet() == treeNode->TypeGet());
 
             genConsumeOperands(treeNode->AsOp());
-            getEmitter()->emitInsBinary(ins_FloatSqrt(treeNode->TypeGet()), emitTypeSize(treeNode), treeNode, srcNode);
+            getEmitter()->emitInsBinary(ins_FloatSqrt(treeNode->TypeGet()), emitTypeSize(treeNode), nullptr, treeNode, srcNode);
             break;
         }
 
@@ -7836,7 +7847,7 @@ void CodeGen::genPutArgStkFieldList(GenTreePutArgStk* putArgStk)
                 if (fieldNode->isUsedFromSpillTemp())
                 {
                     assert(!varTypeIsSIMD(fieldType)); // Q: can we get here with SIMD?
-                    assert(fieldNode->IsRegOptional());
+                    assert(fieldNode->IsRegOptionalUse());
                     TempDsc* tmp = getSpillTempDsc(fieldNode);
                     getEmitter()->emitIns_S(INS_push, emitActualTypeSize(fieldNode->TypeGet()), tmp->tdTempNum(), 0);
                     compiler->tmpRlsTemp(tmp);
