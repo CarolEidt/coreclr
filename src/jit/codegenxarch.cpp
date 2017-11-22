@@ -5097,7 +5097,7 @@ void CodeGen::genCallInstruction(GenTreeCall* call)
 
         GenTreePtr argNode = list->Current();
 
-        fgArgTabEntryPtr curArgTabEntry = compiler->gtArgEntryByNode(call, argNode->gtSkipReloadOrCopy());
+        fgArgTabEntryPtr curArgTabEntry = compiler->gtArgEntryByNode(call, argNode);
         assert(curArgTabEntry);
 
         if (curArgTabEntry->regNum == REG_STK)
@@ -5114,7 +5114,7 @@ void CodeGen::genCallInstruction(GenTreeCall* call)
             for (; fieldListPtr != nullptr; fieldListPtr = fieldListPtr->Rest(), iterationNum++)
             {
                 GenTreePtr putArgRegNode = fieldListPtr->gtOp.gtOp1;
-                assert(putArgRegNode->gtOper == GT_PUTARG_REG);
+                assert(putArgRegNode->gtSkipReloadOrCopy()->gtOper == GT_PUTARG_REG);
                 regNumber argReg = REG_NA;
 
                 if (iterationNum == 0)

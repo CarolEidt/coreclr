@@ -4747,7 +4747,8 @@ bool Lowering::LowerUnsignedDivOrMod(GenTreeOp* divMod)
 //    node - pointer to the DIV or MOD node
 //
 // Returns:
-//    The next node to lower.
+//    If the node is transformed, the next node to lower is returned.
+//    Otherwise, nullptr is returned.
 //
 GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
 {
@@ -4759,7 +4760,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
 
     if (!divisor->IsCnsIntOrI())
     {
-        return next; // no transformations to make
+        return nullptr; // no transformations to make
     }
 
     const var_types type = divMod->TypeGet();
@@ -4770,7 +4771,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
         // We shouldn't see a divmod with constant operands here but if we do then it's likely
         // because optimizations are disabled or it's a case that's supposed to throw an exception.
         // Don't optimize this.
-        return next;
+        return nullptr;
     }
 
     ssize_t divisorValue = divisor->gtIntCon.IconValue();
@@ -4786,7 +4787,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
         // case so optimizing this case would break C# code.
 
         // A runtime check could be used to handle this case but it's probably too rare to matter.
-        return next;
+        return nullptr;
     }
 
     bool isDiv = divMod->OperGet() == GT_DIV;
@@ -4799,7 +4800,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
             // the result is 1 iff the dividend equals divisor.
             divMod->SetOper(GT_EQ);
             ContainCheckCompare(divMod->AsOp());
-            return next;
+            return nullptr;
         }
     }
 
@@ -4810,7 +4811,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
     {
         if (comp->opts.MinOpts())
         {
-            return next;
+            return nullptr;
         }
 
 #if defined(_TARGET_XARCH_) || defined(_TARGET_ARM64_)
@@ -4921,7 +4922,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
         return mulhi;
 #else
         // Currently there's no GT_MULHI for ARM32
-        return next;
+        return nullptr;
 #endif
     }
 
@@ -4929,7 +4930,7 @@ GenTree* Lowering::LowerConstIntDivOrMod(GenTree* node)
     LIR::Use use;
     if (!BlockRange().TryGetUse(node, &use))
     {
-        return next;
+        return nullptr;
     }
 
     // We need to use the dividend node multiple times so its value needs to be
@@ -5030,14 +5031,14 @@ GenTree* Lowering::LowerSignedDivOrMod(GenTreePtr node)
     if (!varTypeIsFloating(node->TypeGet()))
 #endif // _TARGET_XARCH_
     {
-        next = LowerConstIntDivOrMod(node);
+        GenTree* newNext = LowerConstIntDivOrMod(node);
+        if (newNext != nullptr)
+        {
+            return newNext;
+        }
     }
 
-    if ((node->OperGet() == GT_DIV) || (node->OperGet() == GT_MOD))
-    {
-        ContainCheckDivOrMod(node->AsOp());
-    }
-
+    ContainCheckDivOrMod(node->AsOp());
     return next;
 }
 

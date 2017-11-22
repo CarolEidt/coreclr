@@ -1768,6 +1768,14 @@ BasicBlock* LinearScan::getNextBlock()
 
 void LinearScan::doLinearScan()
 {
+    JITDUMP("\n==============================\nStarting LSRA\n");
+#ifdef DEBUG
+    if (lsraStressMask != 0)
+    {
+        JITDUMP("  JitStressRegs = 0x%x\n", lsraStressMask);
+    }
+#endif
+
     unsigned lsraBlockEpoch = compiler->GetCurBasicBlockEpoch();
 
     splitBBNumToTargetBBNumMap = nullptr;
@@ -7814,10 +7822,10 @@ void LinearScan::allocateRegisters()
     regMaskTP    regsToFree      = RBM_NONE;
     regMaskTP    delayRegsToFree = RBM_NONE;
 
-    // This is the most recent RefPosition for which a register was allocated
-    // - currently only used for DEBUG but maintained in non-debug, for clarity of code
+    // This tracks the registers allocated at the current Location
+    // - currently only used for DEBUG stress but maintained in non-debug, for clarity of code
     //   (and will be optimized away because in non-debug spillAlways() unconditionally returns false)
-    RefPosition* lastAllocatedRefPosition = nullptr;
+    regMaskTP recentAllocatedRegs = RBM_NONE;
 
     bool handledBlockEnd = false;
 
@@ -7846,17 +7854,6 @@ void LinearScan::allocateRegisters()
 
         currentReferent = currentRefPosition->referent;
 
-        if (spillAlways() && lastAllocatedRefPosition != nullptr && !lastAllocatedRefPosition->isPhysRegRef &&
-            !lastAllocatedRefPosition->getInterval()->isInternal &&
-            (RefTypeIsDef(lastAllocatedRefPosition->refType) || lastAllocatedRefPosition->getInterval()->isLocalVar))
-        {
-            assert(lastAllocatedRefPosition->registerAssignment != RBM_NONE);
-            RegRecord* regRecord = lastAllocatedRefPosition->getInterval()->assignedReg;
-            unassignPhysReg(regRecord, lastAllocatedRefPosition);
-            // Now set lastAllocatedRefPosition to null, so that we don't try to spill it again
-            lastAllocatedRefPosition = nullptr;
-        }
-
         // We wait to free any registers until we've completed all the
         // uses for the current node.
         // This avoids reusing registers too soon.
@@ -7867,6 +7864,23 @@ void LinearScan::allocateRegisters()
         // another for the final def (if any).
 
         LsraLocation currentLocation = currentRefPosition->nodeLocation;
+
+        if (spillAlways() && ((currentLocation > prevLocation) || (refType == RefTypeBB)))
+        {
+            // We're going to spill all the registers we allocated at the most recent location.
+            // This will automatically free any registers that were ready to be freed.
+            regsToFree &= ~recentAllocatedRegs;
+            while (recentAllocatedRegs != RBM_NONE)
+            {
+                regMaskTP nextRegBit = genFindLowestBit(recentAllocatedRegs);
+                recentAllocatedRegs &= ~nextRegBit;
+                regNumber nextReg = genRegNumFromMask(nextRegBit);
+                RegRecord* regRecord = getRegisterRecord(nextReg);
+                Interval* spillInterval = regRecord->assignedInterval;
+                assert((spillInterval != nullptr) && (spillInterval->recentRefPosition != nullptr));
+                unassignPhysReg(regRecord, spillInterval->recentRefPosition);
+            }
+        }
 
         if ((regsToFree | delayRegsToFree) != RBM_NONE)
         {
@@ -8260,7 +8274,6 @@ void LinearScan::allocateRegisters()
                     regNumber copyReg = assignCopyReg(currentRefPosition);
                     assert(copyReg != REG_NA);
                     INDEBUG(dumpLsraAllocationEvent(LSRA_EVENT_COPY_REG, currentInterval, copyReg));
-                    lastAllocatedRefPosition = currentRefPosition;
                     if (currentRefPosition->lastUse)
                     {
                         if (currentRefPosition->delayRegFree)
@@ -8466,7 +8479,11 @@ void LinearScan::allocateRegisters()
                 }
             }
 
-            lastAllocatedRefPosition = currentRefPosition;
+            if (!currentRefPosition->isPhysRegRef && !currentRefPosition->getInterval()->isInternal &&
+                (RefTypeIsDef(currentRefPosition->refType) || currentRefPosition->getInterval()->isLocalVar))
+            {
+                recentAllocatedRegs |= genRegMask(assignedRegister);
+            }
         }
     }
 
@@ -12148,14 +12165,7 @@ void LinearScan::dumpLsraAllocationEvent(LsraDumpEvent event,
 
         case LSRA_EVENT_RESTORE_PREVIOUS_INTERVAL:
             assert(interval != nullptr);
-            if (activeRefPosition == nullptr)
-            {
-                printf(emptyRefPositionFormat, "");
-            }
-            else
-            {
-                dumpRefPositionShort(activeRefPosition, currentBlock);
-            }
+            dumpRefPositionShort(activeRefPosition, currentBlock);
             printf("Restr %-4s ", getRegName(reg));
             dumpRegRecords();
             if (activeRefPosition != nullptr)
@@ -12505,7 +12515,7 @@ void LinearScan::dumpRefPositionShort(RefPosition* refPosition, BasicBlock* curr
 {
     BasicBlock*         block                  = currentBlock;
     static RefPosition* lastPrintedRefPosition = nullptr;
-    if (refPosition == lastPrintedRefPosition)
+    if ((refPosition == nullptr) || (refPosition == lastPrintedRefPosition))
     {
         dumpEmptyRefPosition();
         return;
