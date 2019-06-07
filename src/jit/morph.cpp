@@ -16043,22 +16043,32 @@ void Compiler::fgMorphBlocks()
 
         bool loadw = false;
 
-#ifdef DEBUG
-        if (verbose)
-        {
-            printf("\nMorphing " FMT_BB " of '%s'\n", block->bbNum, info.compFullName);
-        }
-#endif
+        JITDUMP("\nMorphing " FMT_BB " of '%s'\n", block->bbNum, info.compFullName);
 
 #if LOCAL_ASSERTION_PROP
+        // Don't clear out the assertions if the previous block unconditionally falls through to this one
+        // (this can happen when we import an intrinsic or inline a method that returns a constant.
         if (optLocalAssertionProp)
         {
-            //
-            // Clear out any currently recorded assertion candidates
-            // before processing each basic block,
-            // also we must  handle QMARK-COLON specially
-            //
-            optAssertionReset(0);
+            if (!fgComputePredsDone && !fgCheapPredsValid)
+            {
+                fgComputeCheapPreds();
+            }
+
+            BasicBlock* predBlock = block->GetUniquePred(this);
+            if ((predBlock == nullptr) || (predBlock->bbNext != block))
+            {
+                //
+                // Clear out any currently recorded assertion candidates
+                // before processing each basic block,
+                // also we must  handle QMARK-COLON specially
+                //
+                optAssertionReset(0);
+            }
+            else
+            {
+                JITDUMP("  Retaining assertions from preceding block " FMT_BB "\n", predBlock->bbNum);
+            }
         }
 #endif
 
@@ -16898,6 +16908,8 @@ void Compiler::fgExpandQmarkNodes()
 {
     if (compQmarkUsed)
     {
+        // We may have computed preds for assertion prop. This depends on having them cleared.
+        fgRemovePreds();
         for (BasicBlock* block = fgFirstBB; block != nullptr; block = block->bbNext)
         {
             for (GenTreeStmt* stmt = block->firstStmt(); stmt != nullptr; stmt = stmt->getNextStmt())
