@@ -128,7 +128,8 @@ int Compiler::optCopyProp_LclVarScore(LclVarDsc* lclVarDsc, LclVarDsc* copyVarDs
 //    tree        -  The tree to perform copy propagation on
 //    curSsaName  -  The map from lclNum to its recently live definitions as a stack
 
-void Compiler::optCopyProp(BasicBlock* block, GenTreeStmt* stmt, GenTree* tree, LclNumToGenTreePtrStack* curSsaName)
+void Compiler::optCopyProp(
+    BasicBlock* block, GenTreeStmt* stmt, GenTree* tree, LclNumToGenTreePtrStack* curSsaName, LclNumToLclNode* lastUses)
 {
     // TODO-Review: EH successor/predecessor iteration seems broken.
     if (block->bbCatchTyp == BBCT_FINALLY || block->bbCatchTyp == BBCT_FAULT)
@@ -269,6 +270,14 @@ void Compiler::optCopyProp(BasicBlock* block, GenTreeStmt* stmt, GenTree* tree, 
         tree->gtLclVarCommon.SetLclNum(newLclNum);
         tree->AsLclVarCommon()->SetSsaNum(newSsaNum);
         gtUpdateSideEffects(stmt, tree);
+        GenTreeLclVarCommon** lastUsePtr = lastUses->LookupPointer(newLclNum);
+        if (lastUsePtr != nullptr)
+        {
+            GenTreeLclVarCommon* oldLastUse = *lastUsePtr;
+            oldLastUse->SetLastUse(false);
+            tree->AsLclVarCommon()->SetLastUse(true);
+            *lastUsePtr = tree->AsLclVarCommon();
+        }
 #ifdef DEBUG
         if (verbose)
         {
@@ -311,6 +320,7 @@ void Compiler::optBlockCopyProp(BasicBlock* block, LclNumToGenTreePtrStack* curS
 #endif
 
     TreeLifeUpdater<false> treeLifeUpdater(this);
+    LclNumToLclNode        lastUses(getAllocator(CMK_CopyProp));
 
     // There are no definitions at the start of the block. So clear it.
     compCurLifeTree = nullptr;
@@ -322,9 +332,26 @@ void Compiler::optBlockCopyProp(BasicBlock* block, LclNumToGenTreePtrStack* curS
         // Walk the tree to find if any local variable can be replaced with current live definitions.
         for (GenTree* tree = stmt->gtStmtList; tree != nullptr; tree = tree->gtNext)
         {
+            // We are going to avoid removing last uses from our liveness vector locally.
+            // This allows us to propagate copies we would otherwise miss, e.g.
+            //    V1 = V0; (V0 is a last use)
+            //    use V1
+            // We re-mark it after calling UpdateLife, but we remember it so that we can clear
+            // it if we add a later use.
+            //
+            bool isLastUse = (tree->OperIs(GT_LCL_VAR) && tree->AsLclVarCommon()->IsLastUse());
+            if (isLastUse)
+            {
+                tree->AsLclVarCommon()->SetLastUse(false);
+                lastUses.Set(tree->AsLclVarCommon()->gtLclNum, tree->AsLclVarCommon(), LclNumToLclNode::Overwrite);
+            }
             treeLifeUpdater.UpdateLife(tree);
+            if (isLastUse)
+            {
+                tree->AsLclVarCommon()->SetLastUse(true);
+            }
 
-            optCopyProp(block, stmt, tree, curSsaName);
+            optCopyProp(block, stmt, tree, curSsaName, &lastUses);
 
             // TODO-Review: Merge this loop with the following loop to correctly update the
             // live SSA num while also propagating copies.

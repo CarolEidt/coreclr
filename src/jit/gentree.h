@@ -1948,17 +1948,6 @@ public:
         ClearRegOptional();
     }
 
-    bool IsRegVarDeath() const
-    {
-        unreached();
-        return (gtFlags & GTF_VAR_DEATH) ? true : false;
-    }
-    bool IsRegVarBirth() const
-    {
-        unreached();
-        return (gtFlags & GTF_REG_BIRTH) ? true : false;
-    }
-
     bool IsReverseOp() const
     {
         return (gtFlags & GTF_REVERSE_OPS) ? true : false;
@@ -2714,6 +2703,16 @@ public:
     bool HasSsaName()
     {
         return (gtSsaNum != SsaConfig::RESERVED_SSA_NUM);
+    }
+
+    bool IsLastUse() const
+    {
+        return ((gtFlags & GTF_VAR_DEATH) != 0) ? true : false;
+    }
+
+    void SetLastUse(bool value)
+    {
+        gtFlags = (value) ? (gtFlags | GTF_VAR_DEATH) : (gtFlags & ~GTF_VAR_DEATH);
     }
 
 #if DEBUGGABLE_GENTREE

@@ -4155,7 +4155,8 @@ bool Compiler::fgStructTempNeedsExplicitZeroInit(LclVarDsc* varDsc, BasicBlock* 
 /*****************************************************************************/
 ValueNum Compiler::GetUseAsgDefVNOrTreeVN(GenTree* op)
 {
-    if (op->gtFlags & GTF_VAR_USEASG)
+    // We don't assign value numbers to defs.
+    if ((op->gtFlags & (GTF_VAR_USEASG | GTF_VAR_DEF)) != 0)
     {
         unsigned lclNum = op->AsLclVarCommon()->GetLclNum();
         unsigned ssaNum = GetSsaNumForLocalVarDef(op);
